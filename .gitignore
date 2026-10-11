@@ -1,0 +1,35 @@
+# Virtual Environments
+venv/
+.venv/
+env/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Node & Frontend Build
+frontend/node_modules/
+frontend/dist/
+frontend/.vite/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Environment & Secret Files (NEVER COMMIT SECRETS)
+.env
+.env.local
+.env.*.local
+*.pem
+*.key
+
+# Test & Cache
+.pytest_cache/
+.coverage
+htmlcov/
+data/local_db.json
+
+# IDE & OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
