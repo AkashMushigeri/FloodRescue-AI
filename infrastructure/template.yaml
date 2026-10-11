@@ -1,0 +1,158 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: >
+  FloodRescue AI - WeMakeDevs x AWS Environmental Hackathon 2026
+  Serverless backend with API Gateway, Lambda, DynamoDB, Bedrock Strands AI Agent permissions.
+
+Globals:
+  Function:
+    Timeout: 30
+    MemorySize: 512
+    Runtime: python3.11
+    Tracing: Active
+    Environment:
+      Variables:
+        APP_MODE: "aws"
+        INCIDENTS_TABLE: !Ref IncidentsTable
+        TEAMS_TABLE: !Ref TeamsTable
+        MESSAGES_TABLE: !Ref MessagesTable
+        AUDIT_TABLE: !Ref AuditTable
+        BEDROCK_MODEL_ID: "anthropic.claude-3-haiku-20240307-v1:0"
+
+Resources:
+  # ==========================================
+  # API GATEWAY HTTP API
+  # ==========================================
+  HttpApi:
+    Type: AWS::Serverless::HttpApi
+    Properties:
+      CorsConfiguration:
+        AllowOrigins:
+          - "*"
+        AllowHeaders:
+          - Content-Type
+          - Authorization
+          - X-Idempotency-Key
+        AllowMethods:
+          - GET
+          - POST
+          - PATCH
+          - OPTIONS
+        MaxAge: 600
+
+  # ==========================================
+  # LAMBDA BACKEND FUNCTION
+  # ==========================================
+  FloodRescueApiFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: ../backend
+      Handler: lambda_handlers.main.handler
+      Description: Core FloodRescue AI API service and Strands Agent executor
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref IncidentsTable
+        - DynamoDBCrudPolicy:
+            TableName: !Ref TeamsTable
+        - DynamoDBCrudPolicy:
+            TableName: !Ref MessagesTable
+        - DynamoDBCrudPolicy:
+            TableName: !Ref AuditTable
+        - Statement:
+            - Effect: Allow
+              Action:
+                - bedrock:InvokeModel
+                - bedrock:InvokeModelWithResponseStream
+              Resource: "*"
+      Events:
+        CatchAll:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Path: /{proxy+}
+            Method: ANY
+        Root:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Path: /
+            Method: ANY
+
+  # ==========================================
+  # DYNAMODB TABLES
+  # ==========================================
+  IncidentsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: FloodRescue-Incidents
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: incident_id
+          AttributeType: S
+        - AttributeName: idempotency_key
+          AttributeType: S
+      KeySchema:
+        - AttributeName: incident_id
+          KeyType: HASH
+      GlobalSecondaryIndexes:
+        - IndexName: IdempotencyIndex
+          KeySchema:
+            - AttributeName: idempotency_key
+              KeyType: HASH
+          Projection:
+            ProjectionType: ALL
+      PointInTimeRecoverySpecification:
+        PointInTimeRecoveryEnabled: true
+
+  TeamsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: FloodRescue-Teams
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: team_id
+          AttributeType: S
+      KeySchema:
+        - AttributeName: team_id
+          KeyType: HASH
+
+  MessagesTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: FloodRescue-Messages
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: message_id
+          AttributeType: S
+        - AttributeName: incident_id
+          AttributeType: S
+      KeySchema:
+        - AttributeName: message_id
+          KeyType: HASH
+      GlobalSecondaryIndexes:
+        - IndexName: IncidentIndex
+          KeySchema:
+            - AttributeName: incident_id
+              KeyType: HASH
+          Projection:
+            ProjectionType: ALL
+
+  AuditTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: FloodRescue-Audit
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: event_id
+          AttributeType: S
+      KeySchema:
+        - AttributeName: event_id
+          KeyType: HASH
+
+Outputs:
+  ApiEndpoint:
+    Description: "HTTP API Gateway endpoint URL"
+    Value: !Sub "https://${HttpApi}.execute-api.${AWS::Region}.amazonaws.com"
+  FunctionArn:
+    Description: "FloodRescue Lambda Function ARN"
+    Value: !GetAtt FloodRescueApiFunction.Arn
